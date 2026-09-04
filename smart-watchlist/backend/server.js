@@ -18,6 +18,11 @@ app.use(express.json());
 const engine = new MarketEngine();
 engine.start();
 
+const { createRateLimiter } = require('./rateLimiter');
+const authLimiter = createRateLimiter({ windowMs: 60_000, max: 10 }); // 10 attempts/min per IP
+
+app.post('/api/auth/login', authLimiter, async (req, res) => { ... });
+app.post('/api/auth/signup', authLimiter, async (req, res) => { ... });
 // --- helpers -------------------------------------------------------------
 
 async function buildWatchlistPayload(userId) {
@@ -206,18 +211,50 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => clients.delete(ws));
 });
 
+// --- REPLACEMENT for the engine.on('tick', ...) block in server.js ---
+//
+// PROBLEM: Map.forEach does not await async callbacks. Every tick, for every
+// connected client, this was firing off unawaited DB queries with no
+// ordering, no backpressure, and no error isolation — one client's failed
+// query could go unnoticed and queries could pile up under load.
+//
+// FIX: iterate with a real for-of loop so each client's async work is
+// properly awaited, and wrap each client's handling in try/catch so one
+// client's failure (bad DB read, closed socket mid-send, etc.) never
+// affects the others or crashes the tick handler.
+
 engine.on('tick', (tick) => {
-  clients.forEach(async (userId, ws) => {
-    if (ws.readyState !== 1) return;
-    const watchlist = await store.getWatchlist(userId);
-    if (!watchlist.includes(tick.symbol)) return;
-    const lastSnap = await store.getSnapshot(userId, tick.symbol);
-    const checkpointAt = await store.getCheckpointTime(userId);
-    const hoursSinceCheckpoint = (Date.now() - checkpointAt) / 3_600_000;
-    const change = computeChange(tick, lastSnap, lastSnap?.alertThreshold ?? null, hoursSinceCheckpoint);
-    ws.send(JSON.stringify({ type: 'tick', data: { ...tick, change } }));
-  });
+  // Fire-and-forget at the top level (event emitters can't be awaited),
+  // but the INSIDE is now sequential+safe per client.
+  (async () => {
+    for (const [ws, userId] of clients) {
+      if (ws.readyState !== 1) continue;
+      try {
+        const watchlist = await store.getWatchlist(userId);
+        if (!watchlist.includes(tick.symbol)) continue;
+
+        const lastSnap = await store.getSnapshot(userId, tick.symbol);
+        const checkpointAt = await store.getCheckpointTime(userId);
+        const hoursSinceCheckpoint = (Date.now() - checkpointAt) / 3_600_000;
+        const change = computeChange(tick, lastSnap, lastSnap?.alertThreshold ?? null, hoursSinceCheckpoint);
+
+        ws.send(JSON.stringify({ type: 'tick', data: { ...tick, change } }));
+      } catch (err) {
+        // Isolated per-client — a bad read for one user must never break
+        // delivery to everyone else, and must never throw inside the
+        // event handler (which has no caller to catch it).
+        console.error(`Tick delivery failed for user ${userId}, symbol ${tick.symbol}:`, err.message);
+      }
+    }
+  })();
 });
+
+// NOTE on scaling further, worth mentioning in your README/pitch if asked:
+// This is still O(clients × DB reads) per tick, which is fine at hackathon
+// scale but the next real optimization (not needed yet, documented here so
+// it's clearly a conscious tradeoff) would be to cache each user's
+// watchlist + checkpoint in memory and invalidate on writes, rather than
+// hitting Postgres on every single tick for every connected client.
 
 const PORT = process.env.PORT || 4000;
 

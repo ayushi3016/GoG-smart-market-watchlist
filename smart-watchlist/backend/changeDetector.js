@@ -134,11 +134,13 @@ function computeChange(current, lastSnapshot, alertThreshold, hoursSinceCheckpoi
     }
   }
 
+  const hasMeaningfulChange = reasons.length > 0;
+
   if (current.stale) {
     reasons.push('Data feed for this symbol is currently stale/delayed');
   }
 
-  if (reasons.length === 0) return null;
+  if (!hasMeaningfulChange) return null;
 
   return {
     symbol: current.symbol,
