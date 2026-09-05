@@ -127,6 +127,24 @@ export default function App() {
     await setAlert(symbol, threshold);
     const updated = await fetchWatchlist();
     setItems(updated);
+
+    // Immediate feedback for the common case computeChange can't catch on
+    // its own: a brand-new symbol (no checkpoint baseline yet) that's
+    // ALREADY past the threshold you just set. Without this, the user gets
+    // no signal until a future checkpoint + a further crossing — which
+    // reads as "nothing happened" even though the alert condition is
+    // already true right now.
+    if (threshold != null) {
+      const item = updated.find(i => i.symbol === symbol);
+      if (item && !notifiedRef.current.has(symbol) && item.price != null) {
+        // We don't know direction intent (above/below) from a single
+        // threshold, so just report current standing relative to it.
+        if (item.price >= threshold) {
+          notifiedRef.current.add(symbol);
+          pushToast(symbol, `${symbol}: already at ₹${item.price.toFixed(2)}, at or above your ₹${threshold} alert`);
+        }
+      }
+    }
   };
 
   const handleCheckpoint = async () => {
@@ -250,11 +268,7 @@ export default function App() {
         <AlertsModal
           items={items}
           onClose={() => setShowAlerts(false)}
-          onSetAlert={async (symbol, threshold) => {
-            await setAlert(symbol, threshold);
-            const updated = await fetchWatchlist();
-            setItems(updated);
-          }}
+          onSetAlert={handleSetAlert}
         />
       )}
     </div>
