@@ -12,6 +12,14 @@ export default function AuthScreen({ onAuthed }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    // Inline check before hitting the network, so signup shows a styled
+    // message instead of the browser's native minLength tooltip.
+    if (mode === 'signup' && password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
     setLoading(true);
     try {
       if (mode === 'signup') {
@@ -51,7 +59,7 @@ export default function AuthScreen({ onAuthed }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} noValidate>
           {mode === 'signup' && (
             <>
               <label>Name</label>
@@ -80,7 +88,6 @@ export default function AuthScreen({ onAuthed }) {
             value={password}
             onChange={e => setPassword(e.target.value)}
             placeholder="••••••••"
-            minLength={6}
             required
           />
           {error && <div className="auth-error">{error}</div>}

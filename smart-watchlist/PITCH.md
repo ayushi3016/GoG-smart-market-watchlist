@@ -1,11 +1,11 @@
-# Product Pitch (100 words)
+# Product Pitch
 
-Most watchlists just show numbers — you still have to figure out what
-matters. This one computes a volatility-normalized "significance score" per
-stock, so a 1% move gets flagged on a sleepy stock but ignored on a volatile
-one, and surfaces a ranked "what changed since you last checked" digest
-instead of a wall of prices. State persists server-side per user, so your
-watchlist and baseline follow you across devices. A simulated market engine
-deliberately injects delayed and conflicting ticks so the system visibly
-handles staleness rather than hiding it — every price shows its own age and
-confidence, and conflicts resolve by latest-timestamp, not silently.
+Most watchlists show numbers; you have to work out what matters. This
+one scores each price move against that stock's own volatility, so a
+1% move gets flagged on a sleepy stock and ignored on a volatile one,
+then surfaces a ranked digest of what changed since you last checked
+instead of a wall of prices. State lives server-side per user, so your
+watchlist and baseline follow across devices. A simulated market
+engine injects delayed and conflicting ticks, so staleness is handled
+visibly instead of hidden: every price shows its own age, and
+conflicts resolve by server timestamp, not silently.

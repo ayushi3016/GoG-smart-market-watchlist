@@ -53,6 +53,19 @@ button:active { transform: scale(0.97); }
   border-radius: 999px;
   letter-spacing: 0.5px;
 }
+.live-pill-open {
+  color: var(--accent-dark);
+  background: rgba(0,208,156,0.18);
+}
+.live-pill-connecting {
+  color: var(--muted);
+  background: rgba(107,118,132,0.14);
+}
+.live-pill-closed,
+.live-pill-error {
+  color: var(--amber);
+  background: rgba(217,119,6,0.14);
+}
 .topbar-actions { display: flex; align-items: center; gap: 8px; }
 
 .icon-btn {
@@ -230,6 +243,11 @@ button:active { transform: scale(0.97); }
   margin: 18px 0 12px;
   flex-wrap: wrap;
 }
+.digest-item,
+.digest-headline,
+.digest-detail {
+  text-align: left;
+}
 .digest-tab {
   background: #1b2129;
   border: 1px solid #2c333d;
@@ -250,11 +268,56 @@ button:active { transform: scale(0.97); }
   padding: 12px 14px;
   border-bottom: 1px solid #1e242c;
 }
+.digest-closer {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-top: 1px solid #1e242c;
+}
+ 
+.digest-closer-text {
+  margin: 0;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: #b7c0c9;
+  line-height: 1.5;
+}
 .digest-item:last-child { border-bottom: none; }
 .digest-icon { font-size: 1.1rem; }
 .digest-headline { font-weight: 700; font-size: 0.86rem; }
 .digest-detail { font-size: 0.78rem; color: #8b96a3; margin-top: 2px; }
 
+.toast-stack {
+  position: fixed;
+  top: 70px; /* below the sticky topbar */
+  right: 20px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 320px;
+}
+ 
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #0e1116;
+  color: #e6edf3;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow-hover);
+  font-size: 0.84rem;
+  animation: toast-in 0.2s ease-out;
+}
+ 
+.toast-icon { font-size: 1.1rem; flex-shrink: 0; }
+.toast-text { line-height: 1.4; }
+ 
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 /* ---------- Card grid ---------- */
 .card-grid {
   display: grid;
@@ -320,7 +383,73 @@ button:active { transform: scale(0.97); }
 }
 .tc-btn:hover { border-color: var(--accent); background: #f0fdf9; }
 .tc-btn-danger:hover { border-color: var(--red); background: #fef2f2; color: var(--red); }
+.tc-alert-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  width: 100%;
+}
+ 
+.tc-alert-input {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+.tc-alert-input:focus {
+  border-color: var(--accent);
+  background: var(--card);
+  box-shadow: 0 0 0 2px rgba(0,208,156,0.15);
+}
+.tc-alert-input::-webkit-outer-spin-button,
+.tc-alert-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.tc-alert-input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+ 
+.tc-alert-form-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+ 
+.tc-btn-small {
+  flex: 0 0 auto;  
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  font-weight: 600;
+}
+.tc-btn-small:hover { border-color: var(--accent); background: #f0fdf9; }
+.tc-btn-small.tc-btn-danger:hover { border-color: var(--red); background: #fef2f2; color: var(--red); }
 
+/* Remove number-input spinner arrows */
+.tc-alert-input::-webkit-outer-spin-button,
+.tc-alert-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.tc-alert-input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
 .tc-reasons {
   margin-top: 12px;
   padding-top: 10px;
@@ -437,26 +566,34 @@ button:active { transform: scale(0.97); }
 .modal-card {
   background: var(--card);
   border-radius: 16px;
-  width: 420px;
+  width: min(420px, 92vw);
   max-width: 100%;
   max-height: 80vh;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 22px;
   box-shadow: var(--shadow-hover);
+  box-sizing: border-box;
 }
 .modal-header { display: flex; justify-content: space-between; align-items: flex-start; }
 .modal-header h2 { margin: 0; font-size: 1.2rem; }
 .modal-subtitle { margin: 2px 0 0; color: var(--muted); font-size: 0.8rem; }
 
-.alert-new-row { display: flex; gap: 8px; margin: 18px 0; }
-.alert-new-row select, .alert-new-row input {
+.alert-new-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0;
+}
+.alert-new-row select,
+.alert-new-row input {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 0.82rem;
+  min-width: 0; /* the actual fix — without this, flex children refuse to shrink below intrinsic content width */
+  flex: 1 1 120px; /* grow/shrink, but wrap onto a new line below ~120px each */
 }
-.alert-new-row select { flex: 1.3; }
-.alert-new-row input { flex: 1; }
 .add-alert-btn {
   background: var(--accent);
   border: none;
@@ -465,6 +602,8 @@ button:active { transform: scale(0.97); }
   padding: 0 14px;
   border-radius: 8px;
   font-size: 0.8rem;
+  white-space: nowrap; /* stops "+ New" from wrapping into "+ Ne" / "w" */
+  flex: 0 0 auto;
 }
 .add-alert-btn:hover { filter: brightness(1.05); box-shadow: var(--shadow); }
 

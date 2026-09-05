@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import ExplainPanel from './ExplainPanel';
 import Sparkline from './Sparkline';
 
@@ -11,12 +12,33 @@ const SECTOR = {
 const TIER_DOT = { critical: '🔴', watch: '🟠', stable: '🟢' };
 
 export default function TickerCard({ item, history, onRemove, onSetAlert, aiEnabled }) {
-  const { symbol, name, price, prevClose, volume, avgVolume, stale, change, alertThreshold, asOf } = item;
+  const { symbol, name, price, prevClose, volume, avgVolume, stale, change, alertThreshold } = item;
   const dayDelta = price - prevClose;
   const dayPct = ((dayDelta / prevClose) * 100).toFixed(2);
   const isUp = price >= prevClose;
   const tier = change?.tier || 'stable';
   const volRatio = avgVolume ? volume / avgVolume : 1;
+
+  const [editingAlert, setEditingAlert] = useState(false);
+  const [alertInput, setAlertInput] = useState(alertThreshold ?? '');
+
+  const openEditor = () => {
+    setAlertInput(alertThreshold ?? '');
+    setEditingAlert(true);
+  };
+
+  const handleAlertSubmit = (e) => {
+    e.preventDefault();
+    const num = parseFloat(alertInput);
+    if (Number.isNaN(num) || num <= 0) return;
+    onSetAlert(symbol, num);
+    setEditingAlert(false);
+  };
+
+  const handleClearAlert = () => {
+    onSetAlert(symbol, null);
+    setEditingAlert(false);
+  };
 
   return (
     <div className={`ticker-card tier-${tier}`}>
@@ -55,12 +77,41 @@ export default function TickerCard({ item, history, onRemove, onSetAlert, aiEnab
         </span>
       </div>
 
-      <div className="tc-actions">
-        <button className="tc-btn" onClick={() => onSetAlert(symbol, alertThreshold)}>
-          {alertThreshold ? `🔔 ${alertThreshold}` : '🔕 Set alert'}
-        </button>
-        <button className="tc-btn tc-btn-danger" onClick={() => onRemove(symbol)}>Remove</button>
-      </div>
+      {editingAlert ? (
+        // Editing mode gets its own full-width row — Remove is hidden here
+        // on purpose, so this narrow card never has to squeeze 4-5 controls
+        // into one row (that squeeze was causing Cancel/Remove to overlap).
+        <form className="tc-alert-form" onSubmit={handleAlertSubmit}>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            autoFocus
+            placeholder="Alert price"
+            value={alertInput}
+            onChange={e => setAlertInput(e.target.value)}
+            className="tc-alert-input"
+          />
+          <div className="tc-alert-form-actions">
+            <button type="submit" className="tc-btn tc-btn-small">Save</button>
+            <button type="button" className="tc-btn tc-btn-small" onClick={() => setEditingAlert(false)}>
+              Cancel
+            </button>
+            {alertThreshold != null && (
+              <button type="button" className="tc-btn tc-btn-small tc-btn-danger" onClick={handleClearAlert}>
+                Clear
+              </button>
+            )}
+          </div>
+        </form>
+      ) : (
+        <div className="tc-actions">
+          <button className="tc-btn" onClick={openEditor}>
+            {alertThreshold ? `🔔 ${alertThreshold}` : '🔕 Set alert'}
+          </button>
+          <button className="tc-btn tc-btn-danger" onClick={() => onRemove(symbol)}>Remove</button>
+        </div>
+      )}
 
       {change && change.reasons?.length > 0 && (
         <div className="tc-reasons">

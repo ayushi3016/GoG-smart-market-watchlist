@@ -21,8 +21,6 @@ engine.start();
 const { createRateLimiter } = require('./rateLimiter');
 const authLimiter = createRateLimiter({ windowMs: 60_000, max: 10 }); // 10 attempts/min per IP
 
-app.post('/api/auth/login', authLimiter, async (req, res) => { ... });
-app.post('/api/auth/signup', authLimiter, async (req, res) => { ... });
 // --- helpers -------------------------------------------------------------
 
 async function buildWatchlistPayload(userId) {
@@ -44,7 +42,7 @@ async function buildWatchlistPayload(userId) {
 
 // --- Auth ------------------------------------------------------------------
 
-app.post('/api/auth/signup', async (req, res) => {
+app.post('/api/auth/signup', authLimiter, async (req, res) => {
   const { email, password, name } = req.body;
   if (!email || !password || password.length < 6) {
     return res.status(400).json({ error: 'Email and a password of at least 6 characters are required' });
@@ -59,8 +57,8 @@ app.post('/api/auth/signup', async (req, res) => {
     res.status(500).json({ error: 'Signup failed' });
   }
 });
-
-app.post('/api/auth/login', async (req, res) => {
+ 
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
   try {
@@ -211,21 +209,10 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => clients.delete(ws));
 });
 
-// --- REPLACEMENT for the engine.on('tick', ...) block in server.js ---
-//
-// PROBLEM: Map.forEach does not await async callbacks. Every tick, for every
-// connected client, this was firing off unawaited DB queries with no
-// ordering, no backpressure, and no error isolation — one client's failed
-// query could go unnoticed and queries could pile up under load.
-//
-// FIX: iterate with a real for-of loop so each client's async work is
-// properly awaited, and wrap each client's handling in try/catch so one
-// client's failure (bad DB read, closed socket mid-send, etc.) never
-// affects the others or crashes the tick handler.
+// Iterate with for-of (not Map.forEach) so each client's async DB reads are
+// properly awaited and one client's failure can't affect delivery to others.
 
 engine.on('tick', (tick) => {
-  // Fire-and-forget at the top level (event emitters can't be awaited),
-  // but the INSIDE is now sequential+safe per client.
   (async () => {
     for (const [ws, userId] of clients) {
       if (ws.readyState !== 1) continue;
@@ -248,13 +235,6 @@ engine.on('tick', (tick) => {
     }
   })();
 });
-
-// NOTE on scaling further, worth mentioning in your README/pitch if asked:
-// This is still O(clients × DB reads) per tick, which is fine at hackathon
-// scale but the next real optimization (not needed yet, documented here so
-// it's clearly a conscious tradeoff) would be to cache each user's
-// watchlist + checkpoint in memory and invalidate on writes, rather than
-// hitting Postgres on every single tick for every connected client.
 
 const PORT = process.env.PORT || 4000;
 

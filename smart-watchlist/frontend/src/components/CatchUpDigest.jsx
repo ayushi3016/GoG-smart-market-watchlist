@@ -55,17 +55,28 @@ export default function CatchUpDigest({ items, hoursSinceCheckpoint, onCheckpoin
   const visible = tab === 'all' ? feed : feed.filter(f => f.category === tab);
   const attentionCount = items.filter(i => i.change && !i.change.isNew && i.change.tier !== 'stable').length;
 
-  if (feed.length === 0) return null;
+  if (feed.length === 0) {
+    return (
+      <div className="digest digest-quiet">
+        <div className="digest-meta">Since your last check-in · {hoursAgoLabel(hoursSinceCheckpoint)}</div>
+        <p className="digest-summary">Quiet since you left — nothing crossed the bar. Nothing to catch up on.</p>
+        <button className="reset-baseline-btn" onClick={onCheckpoint}>✓ Mark as seen</button>
+      </div>
+    );
+  }
 
   return (
     <div className="digest">
       <div className="digest-banner-2">
-        <div className="digest-meta">Auto-tracked since your last visit · {hoursAgoLabel(hoursSinceCheckpoint)}</div>
+        <div className="digest-meta">Since your last check-in · {hoursAgoLabel(hoursSinceCheckpoint)}</div>
         <p className="digest-summary">
-          {attentionCount} stock{attentionCount !== 1 ? 's' : ''} in your watchlist need{attentionCount === 1 ? 's' : ''} attention.
-          {feed[0] ? ` ${feed[0].headline}.` : ''} {counts.breakouts} technical signal{counts.breakouts !== 1 ? 's' : ''} detected.
+          {attentionCount === 0
+            ? 'Quiet since you left — nothing crossed the bar.'
+            : `${attentionCount} stock${attentionCount !== 1 ? 's' : ''} worth a second look.`}
+          {feed[0] ? ` ${feed[0].headline}.` : ''}
+          {counts.breakouts > 0 ? ` ${counts.breakouts} technical signal${counts.breakouts !== 1 ? 's' : ''} in the mix.` : ''}
         </p>
-        <button className="reset-baseline-btn" onClick={onCheckpoint}>✓ Reset baseline to now</button>
+        <button className="reset-baseline-btn" onClick={onCheckpoint}>✓ Mark as seen</button>
       </div>
 
       <div className="digest-tabs">
@@ -90,6 +101,10 @@ export default function CatchUpDigest({ items, hoursSinceCheckpoint, onCheckpoin
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="digest-closer">
+        <p className="digest-closer-text">A score isn't a signal to act. It's a reason to look closer.</p>
       </div>
     </div>
   );

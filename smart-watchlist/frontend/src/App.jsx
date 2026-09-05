@@ -34,7 +34,19 @@ export default function App() {
   const wsRef = useRef(null);
   const historyRef = useRef({}); // symbol -> [prices], not state (avoid re-render storms)
   const [historyTick, setHistoryTick] = useState(0); // bump to force re-render on new tick
+  const [wsStatus, setWsStatus] = useState('connecting');
+  const [toasts, setToasts] = useState([]); // [{ id, symbol, message }]
+  const notifiedRef = useRef(new Set());
 
+  useEffect(() => {
+    items.forEach(item => {
+      const crossed = item.change?.reasons?.find(r => r.startsWith('Crossed your alert level'));
+      if (crossed && !notifiedRef.current.has(item.symbol)) {
+        notifiedRef.current.add(item.symbol);
+        pushToast(item.symbol, `${item.symbol}: ${crossed}`);
+      }
+    });
+  }, [items]);
   useEffect(() => {
     if (!authed) return;
     (async () => {
@@ -49,19 +61,19 @@ export default function App() {
       watchlist.forEach(i => { historyRef.current[i.symbol] = [i.price]; });
       setReady(true);
 
-      wsRef.current = connectWebSocket((tick) => {
+       wsRef.current = connectWebSocket((tick) => {
         const hist = historyRef.current[tick.symbol] || [];
         hist.push(tick.price);
         if (hist.length > 30) hist.shift();
         historyRef.current[tick.symbol] = hist;
         setHistoryTick(t => t + 1);
-
+ 
         setItems(prev => {
           const exists = prev.some(i => i.symbol === tick.symbol);
           if (!exists) return prev;
           return prev.map(i => (i.symbol === tick.symbol ? { ...i, ...tick } : i));
         });
-      });
+      }, setWsStatus);
     })();
 
     return () => wsRef.current?.close();
@@ -80,7 +92,13 @@ export default function App() {
   if (!authed) {
     return <AuthScreen onAuthed={() => setAuthed(true)} />;
   }
-
+  const pushToast = (symbol, message) => {
+    const id = `${symbol}-${Date.now()}`;
+    setToasts(prev => [...prev, { id, symbol, message }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 6000);
+  };
   const handleLogout = () => {
     logout();
     wsRef.current?.close();
@@ -105,12 +123,8 @@ export default function App() {
     delete historyRef.current[symbol];
   };
 
-  const handleSetAlert = async (symbol, current) => {
-    const val = window.prompt(`Alert me when ${symbol} crosses price:`, current || '');
-    if (val === null) return;
-    const num = parseFloat(val);
-    if (Number.isNaN(num)) return;
-    await setAlert(symbol, num);
+  const handleSetAlert = async (symbol, threshold) => {
+    await setAlert(symbol, threshold);
     const updated = await fetchWatchlist();
     setItems(updated);
   };
@@ -119,6 +133,7 @@ export default function App() {
     await checkpoint();
     const updated = await fetchWatchlist();
     setItems(updated);
+    notifiedRef.current.clear(); // allow the same alert to fire again after this checkpoint
   };
 
   const tierCounts = items.reduce(
@@ -136,11 +151,24 @@ export default function App() {
 
   return (
     <div className="app">
+       <div className="toast-stack">
+        {toasts.map(t => (
+          <div key={t.id} className="toast">
+            <span className="toast-icon">🔔</span>
+            <span className="toast-text">{t.message}</span>
+          </div>
+        ))}
+      </div>
       <div className="topbar">
         <div className="brand">
           <img src="/logo.png" alt="GoG" className="brand-logo" />
           <span className="brand-name">GoG</span>
-          <span className="live-pill">LIVE</span>
+          <span className={`live-pill live-pill-${wsStatus}`}>
+          {wsStatus === 'open' && 'LIVE'}
+          {wsStatus === 'connecting' && 'CONNECTING…'}
+          {wsStatus === 'closed' && 'DISCONNECTED'}
+          {wsStatus === 'error' && 'CONNECTION ISSUE'}
+        </span>
         </div>
         <div className="topbar-actions">
           <button className="icon-btn" onClick={() => setShowAlerts(true)} title="Price alerts">🔔</button>
@@ -171,7 +199,11 @@ export default function App() {
         {ready && (
           <div className="greeting-block">
             <h1>{greeting()}, {me?.name || 'there'}</h1>
-            <p>{items.length} stock{items.length !== 1 ? 's' : ''} tracked · {tierCounts.critical + tierCounts.watch} deserve your attention.</p>
+            <p>
+  {tierCounts.critical + tierCounts.watch === 0
+    ? `${items.length} stock${items.length !== 1 ? 's' : ''} tracked · all quiet.`
+    : `${items.length} stock${items.length !== 1 ? 's' : ''} tracked · ${tierCounts.critical + tierCounts.watch} worth a look before you scroll past.`}
+</p>
           </div>
         )}
 
@@ -206,11 +238,11 @@ export default function App() {
         </div>
 
         {ready && items.length === 0 && (
-          <div className="empty-state">Your watchlist is empty — click "+ Add stock" to get started.</div>
+          <div className="empty-state">Nothing here yet. Add a stock and we'll start watching.</div>
         )}
 
         {!aiEnabled && ready && (
-          <p className="ai-status">💬 AI explain/chat is running in template mode (no GROQ_API_KEY set on backend)</p>
+          <p className="ai-status">💬 Explanations are running on rule-based summaries right now — plug in an API key for full AI answers.</p>
         )}
       </main>
 

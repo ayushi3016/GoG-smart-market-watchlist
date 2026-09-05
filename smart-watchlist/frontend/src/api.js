@@ -1,4 +1,5 @@
-const BASE = 'http://localhost:4000';
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const WS_BASE = BASE.replace(/^http/, 'ws');
 
 function getToken() {
   return localStorage.getItem('gog_token');
@@ -116,12 +117,21 @@ export async function chatAboutStock(symbol, messages) {
   return res.json();
 }
 
-export function connectWebSocket(onTick) {
+export function connectWebSocket(onTick, onStatusChange) {
   const token = getToken();
-  const ws = new WebSocket(`ws://localhost:4000/ws?token=${token}`);
+  const notify = (status) => onStatusChange && onStatusChange(status);
+ 
+  notify('connecting');
+  const ws = new WebSocket(`${WS_BASE}/ws?token=${token}`);
+ 
+  ws.onopen = () => notify('open');
+  ws.onclose = () => notify('closed');
+  ws.onerror = () => notify('error');
+ 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === 'tick') onTick(msg.data);
   };
+ 
   return ws;
 }

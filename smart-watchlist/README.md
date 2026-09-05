@@ -1,97 +1,60 @@
 # GoG — Smart Market Watchlist
 
-A watchlist that doesn't just show prices — it tells you what actually
-changed since you last looked, and why it matters.
-
-## What's new: real auth + Postgres
-
-The app now has real user accounts (signup/login, bcrypt-hashed passwords,
-JWT auth) and a real Postgres backend instead of the original JSON file
-store — this was always the documented migration path, now actually built.
-
-**On UI:** this is an original design *inspired by* clean fintech app
-conventions (minimal card layout, teal accent), not a clone of any real
-company's proprietary screens — deliberately, since this hackathon is
-judged by the company whose UI it would be cloning, and "build the version
-you believe should exist" is the actual brief.
+A watchlist that tells you what changed since you last looked, and why it matters, instead of just showing prices.
 
 ## Setup
 
 ### 1. Postgres
+
 ```bash
-# create the database (adjust user/password to your local Postgres setup)
 createdb gog_watchlist
 ```
 
+Adjust the user/password below to match your local Postgres setup.
+
 ### 2. Backend
+
 ```bash
 cd backend
 npm install
-cp .env.example .env   # fill in your Postgres credentials + JWT_SECRET
+cp .env.example .env   # fill in Postgres credentials, JWT_SECRET, and (optionally) GROQ_API_KEY
 node server.js
-# Creates tables automatically on first run (initSchema()).
-# API on http://localhost:4000, WebSocket on ws://localhost:4000/ws
 ```
 
+Tables are created automatically on first run (`initSchema()`).
+API runs on `http://localhost:4000`, WebSocket on `ws://localhost:4000/ws`.
+
 ### 3. Frontend
+
 ```bash
 cd frontend
 npm install
 npm run dev
-# App on http://localhost:5173
 ```
 
-Sign up with any email/password (6+ chars), add a few symbols, click
-"Checkpoint now", then watch prices tick live. Log out and back in (or
-open on another device) to confirm your watchlist and password are real —
-they're in Postgres, not the browser.
+App runs on `http://localhost:5173`.
 
-### Enabling real AI explanations
-Add `ANTHROPIC_API_KEY=sk-ant-...` to `backend/.env`. Without it,
-`/api/config` reports `aiEnabled: false`, the frontend shows a "template
-mode" badge, and explanations fall back to a deterministic template built
-from the same signals — the feature degrades gracefully instead of
-breaking the demo.
+Sign up with any email and a password of 6+ characters, add a few symbols, and click "Checkpoint now" to see prices tick live. Logging out and back in (or opening on another device) confirms the watchlist and account are stored server-side in Postgres, not in the browser.
 
-## Why this design
+### Enabling AI explanations
 
-**"Meaningful change" isn't a flat percentage.** A 1% move on a low-volatility
-stock is more significant than a 1% move on a volatile one. The change
-detector (`backend/changeDetector.js`) scores changes using each symbol's own
-volatility, unusual volume, user-set alert crossings, and trend reversals —
-then returns `null` when nothing meaningful happened, so the UI stays quiet
-by default instead of drowning you in noise.
+Add `GROQ_API_KEY` to `backend/.env` — get a free key at [console.groq.com/keys](https://console.groq.com/keys). `ANTHROPIC_API_KEY` also works as a fallback if you'd rather use Claude; Groq is used first if both are set (see `backend/ai.js`).
 
-**State persists server-side per device/user ID**, not in the browser, so the
-same watchlist and "last seen" baseline follow you across devices. The
-"checkpoint" action is what snapshots current prices as the new baseline for
-future diffs — this is deliberately a separate step from just *viewing* the
-page, because otherwise every page load would silently erase what you hadn't
-actually processed yet.
+Without either key, `/api/config` reports `aiEnabled: false`, the frontend shows a "template mode" badge, and explanations fall back to a deterministic template built from the same signals shown elsewhere in the UI. The AI panel is an enhancement, not a dependency — the app works fully without it.
 
-**Stale, delayed and conflicting data are handled explicitly, not hidden.**
-The market engine simulates real feed behavior: independent per-symbol tick
-intervals, deliberately delayed ticks, occasional conflicting near-simultaneous
-reads. Every price carries an `asOf` timestamp; the UI marks a symbol stale
-if it hasn't ticked recently, and conflicting reads are resolved by
-last-write-wins on server time (never client-supplied timestamps) with the
-conflict surfaced rather than silently discarded.
+## Design notes
 
-**Why a simulated feed instead of a real market data API:** free-tier stock
-APIs have rate limits and outages that would risk breaking a live demo, and
-they give no control over the very edge cases (staleness, delay, conflicts)
-the problem statement asks you to handle. Simulating the feed — seeded with
-real large-cap symbols and volatility profiles — makes those edge cases
-reliably demonstrable on demand.
+**What counts as a meaningful change.** A flat percentage threshold doesn't work: a 1% move on a low-volatility stock is more surprising than a 1% move on a volatile one. `backend/changeDetector.js` scores each price change against the symbol's own volatility, recent volume, user-set alert thresholds, and trend reversals, and returns `null` when nothing meaningful happened. The UI stays quiet by default instead of highlighting every tick.
 
-**Scaling story:** ingestion (`marketEngine.js`) is decoupled from the API/WS
-layer via an event emitter, which is a stand-in for pub/sub (Redis in
-production). The JSON file store (`store.js`) is deliberately swappable —
-its shape (users / watchlists / snapshots as separate maps keyed by user ID)
-maps directly onto Postgres tables (`users`, `watchlist_items`,
-`snapshots`) if this needed to run across multiple instances. WebSocket
-fan-out is filtered per-connection so each client only receives ticks for
-symbols it's actually watching, keeping bandwidth flat as watchlists grow.
+The threshold also scales with time: a move is compared against `volatility × √(hours since your last checkpoint)`, not raw volatility. This follows from how a random walk's expected drift grows with the square root of elapsed time — the longer you've been away, the bigger a move needs to be before it's actually surprising. See `changeDetector.js` for the calculation.
+
+**State and the checkpoint model.** Watchlists and price baselines are stored server-side per user, not in the browser, so they follow you across devices. "Checkpoint" is a separate, explicit action that snapshots current prices as the new baseline — a page load alone doesn't do this, otherwise every visit would silently erase whatever you hadn't actually looked at yet.
+
+**Staleness and conflicting data.** The market engine simulates realistic feed behavior: independent per-symbol tick intervals, occasional delayed ticks, and near-simultaneous conflicting reads. Every price carries an `asOf` timestamp. The UI marks a symbol stale if it hasn't ticked recently, and conflicts are resolved by last-write-wins on server time — never on a client-supplied timestamp — with the conflict shown rather than silently dropped.
+
+**Why a simulated feed instead of a live market data API.** Free-tier market data APIs come with rate limits and occasional outages that could break a live demo, and they don't give any control over staleness, delay, or conflicting reads — the exact edge cases this problem asks for. A simulated feed, seeded with real large-cap symbols and realistic volatility profiles, makes those edge cases reproducible on demand instead of hoping they happen to occur during a demo.
+
+**Scaling.** `marketEngine.js` publishes ticks through an event emitter, decoupling data ingestion from the API/WebSocket layer — this is a single-process stand-in for a pub/sub layer like Redis, which is the natural next step for running multiple backend instances. The Postgres schema (`users`, `watchlist_items`, `snapshots`) already reflects that separation of concerns; scaling out is a matter of adding pub/sub in front of it, not restructuring the data model. WebSocket fan-out is filtered per connection, so each client only receives ticks for symbols it's actually watching — bandwidth stays flat as watchlists grow rather than scaling with total users.
 
 ## Architecture
 
@@ -114,21 +77,18 @@ symbols it's actually watching, keeping bandwidth flat as watchlists grow.
                                                   └──────────────────┘
 ```
 
-## What's new since v1
+## Feature notes
 
-- **Time-adjusted significance.** A move is compared against `volatility × √(hours since your last checkpoint)`, not raw volatility — the statistically grounded version of "the bar for what's surprising should depend on how long you've been away," based on how a random walk's expected drift scales with time (see `changeDetector.js` for the reasoning).
-- **52-week high/low proximity** as an additional signal — the market engine now tracks and expands a simulated 52-week band per symbol.
-- **Tier system** (`stable` / `watch` / `critical`) replacing the old flat highlight, with a summary bar ("🔴 2 Significant · 🟠 1 Watch · 🟢 4 Stable") shown at the top of the app.
-- **AI explain + chat, with a hard fallback.** Each ticker has an "Explain this" button that opens a small chat panel. It explains the move using only this app's own computed signals (price/volume/volatility/52-week data) — it does *not* know real-world news, and says so explicitly if asked "why" in the causal sense. If `ANTHROPIC_API_KEY` isn't set, it degrades to a deterministic template built from the same `reasons` array already shown elsewhere in the UI, so the feature never breaks the demo — it's real graceful degradation, not just a talking point.
-
-### Enabling real AI explanations (superseded — see setup section above; kept here as it documents the reasoning)
-The v1 approach was per-device env var directly; now it's `backend/.env` alongside the DB credentials, but the behavior is unchanged: without a key, `/api/config` reports `aiEnabled: false` and the frontend shows a "template mode" badge; with a key, the same UI calls Claude (`claude-sonnet-4-6`) for real natural-language answers and follow-ups.
+- **52-week high/low proximity** is tracked per symbol by the market engine and factored into the significance score.
+- **Tier system** (`stable` / `watch` / `critical`) replaces a flat highlight, with a summary bar ("🔴 2 Significant · 🟠 1 Watch · 🟢 4 Stable") at the top of the app.
+- **AI explain and chat.** Each ticker has an "Explain this" button that opens a small chat panel. It explains price moves using only the app's own computed signals — price, volume, volatility, 52-week range — and says explicitly that it doesn't have access to real-world news if asked a causal "why" question. Runs on Groq (`openai/gpt-oss-120b`) by default, since Groq's free tier means the demo isn't gated on billing setup; falls back to Claude (`claude-sonnet-5`) if `ANTHROPIC_API_KEY` is set instead, and to a deterministic template if neither key is present.
 
 ## What I'd add with more time
-- Redis for pub/sub across multiple backend instances (Postgres + real auth are already in)
-- Score breakdown UI (backend already returns per-factor `factors[]` — see `changeDetector.js` — just needs a frontend panel)
-- "Smart catch-up" grouping (winners/losers) for the since-last-visit digest
-- Price sparkline per ticker (tick history is already collected via `engine.getHistory`)
-- Configurable per-user significance thresholds (currently tuned defaults)
-- Load-test numbers for the "how does this scale" story
+
+- Redis for pub/sub across multiple backend instances
+- A score breakdown UI (the backend already returns per-factor `factors[]` in `changeDetector.js`; it just needs a frontend panel)
+- Winners/losers grouping in the since-last-visit digest
+- Per-ticker sparklines (tick history is already collected via `engine.getHistory`)
+- Configurable per-user significance thresholds (currently fixed defaults)
+- Load-test numbers to back up the scaling story with real data
 - Push notifications for alert crossings when the tab isn't open

@@ -5,6 +5,18 @@ const { pool } = require('./db');
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-change-me';
 const TOKEN_TTL = '30d';
 
+if (JWT_SECRET === 'dev-only-secret-change-me') {
+  // Loud, impossible-to-miss warning rather than a silent security hole.
+  // Doesn't block local/demo running (a hackathon judge shouldn't need to
+  // generate a secret just to see the app work), but makes the risk obvious
+  // rather than hidden behind a quiet fallback default.
+  console.warn(
+    '\n⚠️  WARNING: JWT_SECRET is not set in .env — using an insecure default.\n' +
+    '   Anyone who reads this source code can forge valid login tokens.\n' +
+    '   Set a real random JWT_SECRET in your .env before deploying anywhere real.\n'
+  );
+}
+
 function signToken(userId) {
   return jwt.sign({ userId }, JWT_SECRET, { expiresIn: TOKEN_TTL });
 }
