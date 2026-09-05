@@ -2,6 +2,11 @@
 
 A watchlist that tells you what changed since you last looked, and why it matters, instead of just showing prices.
 
+**Live app:** https://go-g-smart-market-watchlist.vercel.app/
+**API:** https://gog-smart-market-watchlist.onrender.com
+
+Note: the backend is on Render's free tier, which spins down after inactivity. The first request after a period of idle time can take 30–60 seconds to respond while it wakes up.
+
 ## Setup
 
 ### 1. Postgres
