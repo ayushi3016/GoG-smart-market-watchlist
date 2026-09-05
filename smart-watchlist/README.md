@@ -56,6 +56,8 @@ The threshold also scales with time: a move is compared against `volatility × �
 
 **State and the checkpoint model.** Watchlists and price baselines are stored server-side per user, not in the browser, so they follow you across devices. "Checkpoint" is a separate, explicit action that snapshots current prices as the new baseline — a page load alone doesn't do this, otherwise every visit would silently erase whatever you hadn't actually looked at yet.
 
+**Alerts follow the same checkpoint model.** Setting an alert on a price that's already past your target notifies you immediately. A crossing that happens afterward is detected relative to your last checkpoint, so it won't re-fire repeatedly on every tick — clicking "Mark as seen" resets the baseline, same as it does for price changes.
+
 **Staleness and conflicting data.** The market engine simulates realistic feed behavior: independent per-symbol tick intervals, occasional delayed ticks, and near-simultaneous conflicting reads. Every price carries an `asOf` timestamp. The UI marks a symbol stale if it hasn't ticked recently, and conflicts are resolved by last-write-wins on server time — never on a client-supplied timestamp — with the conflict shown rather than silently dropped.
 
 **Why a simulated feed instead of a live market data API.** Free-tier market data APIs come with rate limits and occasional outages that could break a live demo, and they don't give any control over staleness, delay, or conflicting reads — the exact edge cases this problem asks for. A simulated feed, seeded with real large-cap symbols and realistic volatility profiles, makes those edge cases reproducible on demand instead of hoping they happen to occur during a demo.
