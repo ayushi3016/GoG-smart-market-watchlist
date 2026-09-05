@@ -8,6 +8,23 @@ async function getWatchlist(userId) {
   return res.rows.map(r => r.symbol);
 }
 
+// watchlist_items is the source of truth for alert thresholds (set instantly
+// via the alert endpoint). snapshots only gets an alert_threshold once a
+// checkpoint has run, so reading alerts from snapshots made a freshly-set
+// alert look like it silently failed until the next checkpoint. This reads
+// the real, current value directly.
+async function getWatchlistAlerts(userId) {
+  const res = await pool.query(
+    'SELECT symbol, alert_threshold FROM watchlist_items WHERE user_id = $1',
+    [userId]
+  );
+  const map = {};
+  res.rows.forEach(r => {
+    map[r.symbol] = r.alert_threshold != null ? Number(r.alert_threshold) : null;
+  });
+  return map;
+}
+
 async function addToWatchlist(userId, symbol, alertThreshold = null) {
   await pool.query(
     `INSERT INTO watchlist_items (user_id, symbol, alert_threshold)
@@ -82,10 +99,15 @@ async function setAlertThreshold(userId, symbol, threshold) {
     'UPDATE watchlist_items SET alert_threshold = $3 WHERE user_id = $1 AND symbol = $2',
     [userId, symbol, threshold]
   );
-  await pool.query(
-    'UPDATE snapshots SET alert_threshold = $3 WHERE user_id = $1 AND symbol = $2',
-    [userId, symbol, threshold]
+}
+
+async function getAlertThreshold(userId, symbol) {
+  const res = await pool.query(
+    'SELECT alert_threshold FROM watchlist_items WHERE user_id = $1 AND symbol = $2',
+    [userId, symbol]
   );
+  const val = res.rows[0]?.alert_threshold;
+  return val != null ? Number(val) : null;
 }
 
 async function getCheckpointTime(userId) {
@@ -99,6 +121,8 @@ async function setCheckpointTime(userId, ts) {
 
 module.exports = {
   getWatchlist,
+  getWatchlistAlerts,
+  getAlertThreshold,
   addToWatchlist,
   removeFromWatchlist,
   getSnapshot,

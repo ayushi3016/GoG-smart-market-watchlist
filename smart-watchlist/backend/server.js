@@ -27,13 +27,16 @@ async function buildWatchlistPayload(userId) {
   const symbols = await store.getWatchlist(userId);
   const checkpointAt = await store.getCheckpointTime(userId);
   const hoursSinceCheckpoint = (Date.now() - checkpointAt) / 3_600_000;
+  // Read alert thresholds from watchlist_items (the real source of truth,
+  // updated instantly) instead of snapshots (only updated on checkpoint).
+  const alerts = await store.getWatchlistAlerts(userId);
 
   const items = [];
   for (const symbol of symbols) {
     const current = engine.getSnapshot(symbol);
     if (!current) continue;
     const lastSnap = await store.getSnapshot(userId, symbol);
-    const alertThreshold = lastSnap?.alertThreshold ?? null;
+    const alertThreshold = alerts[symbol] ?? null;
     const change = computeChange(current, lastSnap, alertThreshold, hoursSinceCheckpoint);
     items.push({ ...current, alertThreshold, change });
   }
@@ -153,9 +156,10 @@ app.post('/api/watchlist/:symbol/explain', requireAuth, async (req, res) => {
   if (!current) return res.status(404).json({ error: 'Unknown symbol' });
 
   const lastSnap = await store.getSnapshot(req.userId, symbol);
+  const alertThreshold = await store.getAlertThreshold(req.userId, symbol);
   const checkpointAt = await store.getCheckpointTime(req.userId);
   const hoursSinceCheckpoint = (Date.now() - checkpointAt) / 3_600_000;
-  const change = computeChange(current, lastSnap, lastSnap?.alertThreshold ?? null, hoursSinceCheckpoint);
+  const change = computeChange(current, lastSnap, alertThreshold, hoursSinceCheckpoint);
   const history = engine.getHistory(symbol, 10);
 
   try {
@@ -177,9 +181,10 @@ app.post('/api/watchlist/:symbol/chat', requireAuth, async (req, res) => {
   }
 
   const lastSnap = await store.getSnapshot(req.userId, symbol);
+  const alertThreshold = await store.getAlertThreshold(req.userId, symbol);
   const checkpointAt = await store.getCheckpointTime(req.userId);
   const hoursSinceCheckpoint = (Date.now() - checkpointAt) / 3_600_000;
-  const change = computeChange(current, lastSnap, lastSnap?.alertThreshold ?? null, hoursSinceCheckpoint);
+  const change = computeChange(current, lastSnap, alertThreshold, hoursSinceCheckpoint);
   const history = engine.getHistory(symbol, 10);
 
   try {
@@ -221,9 +226,10 @@ engine.on('tick', (tick) => {
         if (!watchlist.includes(tick.symbol)) continue;
 
         const lastSnap = await store.getSnapshot(userId, tick.symbol);
+        const alertThreshold = await store.getAlertThreshold(userId, tick.symbol);
         const checkpointAt = await store.getCheckpointTime(userId);
         const hoursSinceCheckpoint = (Date.now() - checkpointAt) / 3_600_000;
-        const change = computeChange(tick, lastSnap, lastSnap?.alertThreshold ?? null, hoursSinceCheckpoint);
+        const change = computeChange(tick, lastSnap, alertThreshold, hoursSinceCheckpoint);
 
         ws.send(JSON.stringify({ type: 'tick', data: { ...tick, change } }));
       } catch (err) {
